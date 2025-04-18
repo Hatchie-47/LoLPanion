@@ -1,0 +1,81 @@
+version: '3.7'
+
+services:
+  data_service:
+    build:
+      context: ../
+      dockerfile: build/data_service.dockerfile
+    env_file:
+      - data_service.env
+      - postgres.env
+    volumes:
+      - ../logs:/logs
+    ports:
+      - '4701:4701'
+    networks:
+      lol_network:
+        ipv4_address: 192.168.47.10
+    healthcheck:
+      test: [ "CMD-SHELL", "curl --fail http://0.0.0.0:4701/healthcheck || exit 1" ]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 2m
+    depends_on:
+      postgres:
+        condition: service_healthy
+  frontend_service:
+    build:
+      context: ../
+      dockerfile: build/frontend_service.dockerfile
+    env_file:
+      - frontend_service.env
+    volumes:
+      - ../logs:/logs
+      - /tmp/.X11-unix/:/tmp/.X11-unix/
+      - ../src/frontend_service/ddragon:/ddragon
+    ports:
+      - '4702:4702'
+    networks:
+      lol_network:
+        ipv4_address: 192.168.47.11
+    depends_on:
+      data_service:
+        condition: service_healthy
+  postgres:
+    image: postgres:16.4
+    restart: always
+    env_file:
+      - postgres.env
+    volumes:
+      - ../pgdata:/var/lib/postgresql/data
+    ports:
+      - ':5432'
+    networks:
+      lol_network:
+        ipv4_address: 192.168.47.12
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U healthcheck -d lol"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 2m
+  pgadmin:
+    image: dpage/pgadmin4
+    container_name: pgadmin4_container
+    restart: always
+    ports:
+      - 8888:80
+    networks:
+      lol_network:
+        ipv4_address: 192.168.47.13
+    env_file:
+      - postgres.env
+    volumes:
+      - ../pgadmin-data:/var/lib/pgadmin
+networks:
+  lol_network:
+    ipam:
+      driver: default
+      config:
+        - subnet: '192.168.47.0/24'
